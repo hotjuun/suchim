@@ -4,8 +4,22 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "스침 — 스쳐간 순간을 붙잡는 곳",
-  description: "같은 시간, 같은 장소의 인연을 다시 잇다",
+  description:
+    "카페에서, 지하철에서 스쳐간 그 사람. 말을 걸지 못한 순간을 다시 이어주는 곳.",
   manifest: "/manifest.json",
+  openGraph: {
+    title: "스침 — 스쳐간 순간을 붙잡는 곳",
+    description:
+      "카페에서, 지하철에서 스쳐간 그 사람. 말을 걸지 못한 순간을 다시 이어주는 곳.",
+    siteName: "스침",
+    locale: "ko_KR",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "스침 — 스쳐간 순간을 붙잡는 곳",
+    description: "너 오늘 스침 했어? 스쳐간 인연을 다시 찾는 곳.",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

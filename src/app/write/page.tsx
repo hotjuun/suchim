@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import BottomNav from "@/components/BottomNav";
+import Toast from "@/components/Toast";
 import { ChevronLeftIcon, MapPinIcon, ShieldIcon } from "@/components/Icons";
 import { useAuth } from "@/components/AuthProvider";
 import { createPost } from "@/lib/posts";
@@ -17,6 +18,7 @@ export default function WritePage() {
   const [body, setBody] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [toast, setToast] = useState({ show: false, message: "", type: "success" as "success" | "error" });
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) =>
@@ -51,9 +53,10 @@ export default function WritePage() {
         body: body.trim(),
         tags: selectedTags,
       });
-      router.push("/");
+      setToast({ show: true, message: "스침이 등록되었어요!", type: "success" });
+      setTimeout(() => router.push("/"), 1500);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "글 등록에 실패했습니다");
+      setToast({ show: true, message: err instanceof Error ? err.message : "글 등록에 실패했습니다", type: "error" });
     } finally {
       setSubmitting(false);
     }
@@ -61,6 +64,7 @@ export default function WritePage() {
 
   return (
     <div className="flex min-h-full flex-col bg-bg">
+      <Toast message={toast.message} show={toast.show} type={toast.type} onClose={() => setToast(t => ({ ...t, show: false }))} />
       {/* Header */}
       <div className="flex items-center justify-between px-6 pb-2 pt-3">
         <button
