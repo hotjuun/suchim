@@ -14,7 +14,7 @@ const tabs = [
   { href: "/", icon: HomeIcon, label: "피드" },
   { href: "/explore", icon: SearchIcon, label: "탐색" },
   { href: "/write", icon: PenIcon, label: "글쓰기", isCenter: true },
-  { href: "/matches", icon: HeartIcon, label: "매칭", badge: 2 },
+  { href: "/matches", icon: HeartIcon, label: "매칭" },
   { href: "/mypage", icon: UserIcon, label: "MY" },
 ];
 
