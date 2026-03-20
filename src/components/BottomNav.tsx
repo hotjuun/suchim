@@ -60,11 +60,6 @@ export default function BottomNav() {
             >
               {tab.label}
             </span>
-            {tab.badge && tab.badge > 0 && (
-              <span className="absolute -right-1.5 top-0 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-accent px-1 text-[9px] font-bold text-white">
-                {tab.badge}
-              </span>
-            )}
           </Link>
         );
       })}
