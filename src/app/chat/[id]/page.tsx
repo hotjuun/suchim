@@ -8,6 +8,8 @@ import PaywallModal from "@/components/PaywallModal";
 import CoinModal from "@/components/CoinModal";
 import { ChevronLeftIcon, MoreIcon } from "@/components/Icons";
 import { DAILY_LIMITS, COIN_PRICES, getCoinBalance, spendCoins, addCoins, containsContactInfo } from "@/lib/coins";
+import { checkContent } from "@/lib/content-filter";
+import ProfanityAlertModal from "@/components/ProfanityAlertModal";
 import type { ChatMessage } from "@/types";
 
 export default function ChatDetailPage({
@@ -20,6 +22,17 @@ export default function ChatDetailPage({
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [profanityAlert, setProfanityAlert] = useState<string | null>(null);
+
+  const safeSetInput = (next: string) => {
+    if (!next) return setInput(next);
+    const result = checkContent(next);
+    if (!result.passed) {
+      setProfanityAlert(result.reason!);
+      return;
+    }
+    setInput(next);
+  };
   const [sending, setSending] = useState(false);
   const [balance, setBalance] = useState(0);
   const [showContactPaywall, setShowContactPaywall] = useState(false);
@@ -73,6 +86,14 @@ export default function ChatDetailPage({
   const sendMessage = async () => {
     if (!input.trim() || !user || sending) return;
 
+    // 콘텐츠 필터링 (욕설, 혐오 등)
+    const check = checkContent(input);
+    if (!check.passed) {
+      setContactBlocked(true);
+      setTimeout(() => setContactBlocked(false), 3000);
+      return;
+    }
+
     // 연락처 패턴 감지
     if (containsContactInfo(input)) {
       setContactBlocked(true);
@@ -122,6 +143,12 @@ export default function ChatDetailPage({
 
   return (
     <div className="flex h-full flex-col bg-bg">
+      {profanityAlert && (
+        <ProfanityAlertModal
+          reason={profanityAlert}
+          onClose={() => setProfanityAlert(null)}
+        />
+      )}
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-4 pb-3 pt-3">
         <button
@@ -242,7 +269,7 @@ export default function ChatDetailPage({
           <input
             type="text"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => safeSetInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
             placeholder={
               isLimitReached

@@ -8,7 +8,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { supabase } from "@/lib/supabase";
 import { respondToMatch } from "@/lib/matches";
 
-const TABS = ["새로운", "대화 중", "지난 스침"];
+const TABS = ["새로운", "보낸 스침", "대화 중", "지난 스침"];
 
 const EMOJIS = ["🌿", "🌸", "🍀", "🌊", "🌙", "✨", "🦋", "🌻"];
 function hashEmoji(id: string) {
@@ -34,6 +34,21 @@ interface MatchItem {
   };
 }
 
+interface SentMatchItem {
+  id: string;
+  created_at: string;
+  post_id: string;
+  message: string;
+  status: string;
+  post: {
+    id: string;
+    body: string;
+    location_name: string;
+    date_text: string;
+    time_text: string;
+  };
+}
+
 interface ChatItem {
   id: string;
   user1_id: string;
@@ -47,6 +62,7 @@ export default function MatchesPage() {
   const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState(0);
   const [matches, setMatches] = useState<MatchItem[]>([]);
+  const [sentMatches, setSentMatches] = useState<SentMatchItem[]>([]);
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -54,28 +70,34 @@ export default function MatchesPage() {
     if (authLoading || !user) return;
 
     async function load() {
-      // 내가 쓴 글에 온 pending 매칭
-      const { data: matchData } = await supabase
-        .from("match_requests")
-        .select("*, post:posts(*)")
-        .eq("status", "pending")
-        .order("created_at", { ascending: false });
+      const [matchData, sentData, chatData] = await Promise.all([
+        // 내가 쓴 글에 온 pending 매칭
+        supabase
+          .from("match_requests")
+          .select("*, post:posts(*)")
+          .eq("status", "pending")
+          .order("created_at", { ascending: false }),
+        // 내가 보낸 매칭 요청
+        supabase
+          .from("match_requests")
+          .select("*, post:posts(id, body, location_name, date_text, time_text)")
+          .eq("requester_id", user!.id)
+          .order("created_at", { ascending: false }),
+        // 내 채팅방들
+        supabase
+          .from("chat_rooms")
+          .select("*, post:posts(location_name)")
+          .or(`user1_id.eq.${user!.id},user2_id.eq.${user!.id}`)
+          .order("created_at", { ascending: false }),
+      ]);
 
-      if (matchData) {
-        // 내 글에 온 요청만 필터
+      if (matchData.data) {
         setMatches(
-          matchData.filter((m: MatchItem) => m.post?.user_id === user!.id)
+          matchData.data.filter((m: MatchItem) => m.post?.user_id === user!.id)
         );
       }
-
-      // 내 채팅방들
-      const { data: chatData } = await supabase
-        .from("chat_rooms")
-        .select("*, post:posts(location_name)")
-        .or(`user1_id.eq.${user!.id},user2_id.eq.${user!.id}`)
-        .order("created_at", { ascending: false });
-
-      if (chatData) setChats(chatData);
+      if (sentData.data) setSentMatches(sentData.data);
+      if (chatData.data) setChats(chatData.data);
       setLoading(false);
     }
     load();
@@ -145,7 +167,12 @@ export default function MatchesPage() {
                 {matches.length}
               </span>
             )}
-            {i === 1 && chats.length > 0 && (
+            {i === 1 && sentMatches.length > 0 && (
+              <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-secondary/40 px-1.5 text-[11px] font-bold text-white">
+                {sentMatches.length}
+              </span>
+            )}
+            {i === 2 && chats.length > 0 && (
               <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#34C759] px-1.5 text-[11px] font-bold text-white">
                 {chats.length}
               </span>
@@ -234,6 +261,70 @@ export default function MatchesPage() {
             )}
           </>
         ) : activeTab === 1 ? (
+          <>
+            {sentMatches.length === 0 ? (
+              <div className="flex flex-col items-center pt-16 text-center">
+                <span className="mb-4 text-5xl">💌</span>
+                <h3 className="mb-2 text-base font-semibold text-primary">
+                  아직 보낸 스침이 없어요
+                </h3>
+                <p className="text-sm leading-relaxed text-secondary">
+                  피드에서 &ldquo;저예요&rdquo;를 눌러
+                  <br />
+                  인연에게 메시지를 보내보세요
+                </p>
+                <button
+                  onClick={() => router.push("/")}
+                  className="mt-5 rounded-3xl bg-primary px-7 py-3 text-sm font-semibold text-white"
+                >
+                  피드 보러 가기
+                </button>
+              </div>
+            ) : (
+              sentMatches.map((match) => {
+                const statusLabel =
+                  match.status === "accepted"
+                    ? { text: "수락됨 ✓", cls: "text-[#34C759]" }
+                    : match.status === "declined"
+                    ? { text: "거절됨", cls: "text-secondary" }
+                    : { text: "응답 대기 중", cls: "text-accent" };
+                return (
+                  <div
+                    key={match.id}
+                    className="overflow-hidden rounded-[20px] border border-border bg-white"
+                  >
+                    <div className="p-[18px] pb-3.5">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-xs font-medium text-secondary">
+                          {match.post.location_name}
+                        </p>
+                        <span className={`text-xs font-semibold ${statusLabel.cls}`}>
+                          {statusLabel.text}
+                        </span>
+                      </div>
+                      <p className="mb-2 border-l-[3px] border-surface pl-3 text-sm leading-relaxed text-primary">
+                        &ldquo;{match.post.body.slice(0, 60)}...&rdquo;
+                      </p>
+                      <p className="text-xs text-secondary">
+                        내 메시지: &ldquo;{match.message.slice(0, 50)}&rdquo;
+                      </p>
+                    </div>
+                    {match.status === "accepted" && (
+                      <div className="border-t border-border px-[18px] py-3">
+                        <button
+                          onClick={() => router.push("/")}
+                          className="text-xs font-semibold text-accent"
+                        >
+                          채팅하러 가기 →
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </>
+        ) : activeTab === 2 ? (
           <>
             {chats.length === 0 ? (
               <div className="flex flex-col items-center pt-16 text-center">

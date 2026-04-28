@@ -89,23 +89,11 @@ export async function incrementDailyUsage(
   actionType: string
 ): Promise<void> {
   const today = new Date().toISOString().split("T")[0];
-  const current = await getDailyUsage(userId, actionType);
-
-  if (current === 0) {
-    await supabase.from("daily_usage").insert({
-      user_id: userId,
-      action_type: actionType,
-      date: today,
-      count: 1,
-    });
-  } else {
-    await supabase
-      .from("daily_usage")
-      .update({ count: current + 1 })
-      .eq("user_id", userId)
-      .eq("action_type", actionType)
-      .eq("date", today);
-  }
+  await supabase.rpc("increment_daily_usage", {
+    p_user_id: userId,
+    p_action_type: actionType,
+    p_date: today,
+  });
 }
 
 // 연락처 패턴 감지

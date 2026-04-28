@@ -11,7 +11,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [signUpDone, setSignUpDone] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,7 +20,8 @@ export default function LoginPage() {
     try {
       if (isSignUp) {
         await signUp(email, password);
-        setSignUpDone(true);
+        // 가입 즉시 로그인 → 온보딩으로 이동
+        router.push("/welcome");
       } else {
         await signIn(email, password);
         router.push("/");
@@ -34,33 +34,6 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
-
-  if (signUpDone) {
-    return (
-      <div className="flex min-h-full flex-col items-center justify-center bg-bg px-6">
-        <div className="w-full max-w-sm text-center">
-          <span className="mb-4 block text-5xl">📮</span>
-          <h2 className="mb-2 text-xl font-bold text-primary">
-            이메일을 확인해주세요
-          </h2>
-          <p className="mb-8 text-sm leading-relaxed text-secondary">
-            <strong>{email}</strong>로 인증 링크를 보냈어요.
-            <br />
-            링크를 클릭하면 가입이 완료됩니다.
-          </p>
-          <button
-            onClick={() => {
-              setIsSignUp(false);
-              setSignUpDone(false);
-            }}
-            className="w-full rounded-xl bg-primary py-3.5 text-sm font-semibold text-white"
-          >
-            로그인하러 가기
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex min-h-full flex-col items-center justify-center bg-bg px-6">
@@ -110,7 +83,7 @@ export default function LoginPage() {
             className="w-full rounded-xl bg-accent py-3.5 text-sm font-semibold text-white transition-all disabled:opacity-50"
           >
             {loading
-              ? "잠시만..."
+              ? "잠시만요..."
               : isSignUp
                 ? "가입하기"
                 : "로그인"}

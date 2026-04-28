@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
 import { SearchIcon, MapPinIcon } from "@/components/Icons";
-import { supabase } from "@/lib/supabase";
+import { searchPosts, getTotalPostCount } from "@/lib/posts";
+import { seedPosts } from "@/lib/mock-data";
 import type { Post } from "@/types";
 
 const POPULAR_LOCATIONS = [
@@ -14,9 +15,9 @@ const POPULAR_LOCATIONS = [
   { name: "홍대", emoji: "🎸", count: 15 },
   { name: "성수", emoji: "🌳", count: 6 },
   { name: "을지로", emoji: "🏮", count: 4 },
-  { name: "이태원", emoji: "🌍", count: 3 },
+  { name: "잠실", emoji: "⚾", count: 9 },
   { name: "연남동", emoji: "🚶", count: 7 },
-  { name: "망원동", emoji: "📖", count: 5 },
+  { name: "여의도", emoji: "🌸", count: 5 },
 ];
 
 export default function ExplorePage() {
@@ -33,18 +34,29 @@ export default function ExplorePage() {
 
     const timer = setTimeout(async () => {
       setSearching(true);
+      const q = query.trim().toLowerCase();
+
+      // 시드 데이터에서 검색
+      const seedResults = seedPosts.filter(
+        (p) =>
+          p.location_name.toLowerCase().includes(q) ||
+          p.body.toLowerCase().includes(q) ||
+          p.tags.some((t) => t.includes(q))
+      );
+
       try {
-        const { data } = await supabase
-          .from("posts")
-          .select("*")
-          .or(
-            `location_name.ilike.%${query}%,body.ilike.%${query}%`
-          )
-          .order("created_at", { ascending: false })
-          .limit(10);
-        setResults(data || []);
+        const [dbResults, totalCount] = await Promise.all([
+          searchPosts(q),
+          getTotalPostCount(),
+        ]);
+        // 전체 글 20개 이상 + 검색 결과 5개 이상이면 시드 제외
+        if (totalCount >= 20 && dbResults.length >= 5) {
+          setResults(dbResults);
+        } else {
+          setResults([...dbResults, ...seedResults]);
+        }
       } catch {
-        setResults([]);
+        setResults(seedResults);
       } finally {
         setSearching(false);
       }
@@ -109,7 +121,7 @@ export default function ExplorePage() {
             )}
           </>
         ) : (
-          /* Popular Locations */
+          /* Popular Locations & Tags */
           <>
             <h2 className="mb-4 text-base font-semibold text-primary">
               스침이 많은 장소
@@ -138,7 +150,7 @@ export default function ExplorePage() {
               최근 인기 태그
             </h2>
             <div className="flex flex-wrap gap-2">
-              {["카페", "지하철", "출근길", "공원", "서점", "헬스장", "식당"].map(
+              {["카페", "지하철", "공원", "서점", "헬스장", "식당", "야구장", "축제"].map(
                 (tag) => (
                   <button
                     key={tag}

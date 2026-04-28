@@ -131,3 +131,18 @@ begin
   end if;
 end;
 $$;
+
+-- 일일 사용량 원자적 증가 함수 (race condition 방지)
+create or replace function increment_daily_usage(
+  p_user_id uuid,
+  p_action_type text,
+  p_date date
+)
+returns void as $$
+begin
+  insert into daily_usage (user_id, action_type, date, count)
+  values (p_user_id, p_action_type, p_date, 1)
+  on conflict (user_id, action_type, date)
+  do update set count = daily_usage.count + 1;
+end;
+$$ language plpgsql security definer;

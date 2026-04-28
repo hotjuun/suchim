@@ -6,19 +6,56 @@ import BottomNav from "@/components/BottomNav";
 import Toast from "@/components/Toast";
 import { ChevronLeftIcon, MapPinIcon, ShieldIcon } from "@/components/Icons";
 import { useAuth } from "@/components/AuthProvider";
+import EmailVerifyModal from "@/components/EmailVerifyModal";
+import PlaceSearchModal from "@/components/PlaceSearchModal";
+import ProfanityAlertModal from "@/components/ProfanityAlertModal";
 import { createPost } from "@/lib/posts";
+import { checkContent } from "@/lib/content-filter";
 import { TAG_OPTIONS } from "@/lib/mock-data";
+
+function formatDateLabel(dateStr: string): string {
+  const today = new Date().toISOString().split("T")[0];
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+  if (dateStr === today) return "오늘";
+  if (dateStr === yesterday) return "어제";
+  const d = new Date(dateStr);
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
 
 export default function WritePage() {
   const router = useRouter();
   const { user } = useAuth();
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [showPlaceSearch, setShowPlaceSearch] = useState(false);
   const [location, setLocation] = useState("");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [time, setTime] = useState("");
   const [body, setBody] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState({ show: false, message: "", type: "success" as "success" | "error" });
+  const [profanityAlert, setProfanityAlert] = useState<string | null>(null);
+
+  // 입력 시 욕설 감지: 통과하면 set, 안 통과하면 알림 + 입력 차단
+  const safeSetLocation = (next: string) => {
+    if (!next) return setLocation(next);
+    const result = checkContent(next);
+    if (!result.passed) {
+      setProfanityAlert(result.reason!);
+      return;
+    }
+    setLocation(next);
+  };
+
+  const safeSetBody = (next: string) => {
+    if (!next) return setBody(next);
+    const result = checkContent(next);
+    if (!result.passed) {
+      setProfanityAlert(result.reason!);
+      return;
+    }
+    setBody(next.slice(0, 500));
+  };
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) =>
@@ -26,11 +63,11 @@ export default function WritePage() {
     );
   };
 
-  const canSubmit = location.trim() && body.trim().length >= 10 && !submitting;
+  const canSubmit = location.trim() && date && body.trim().length >= 10 && !submitting;
 
   const progressSteps = [
     location.trim().length > 0,
-    date.trim().length > 0,
+    date.length > 0,
     body.trim().length >= 10,
     selectedTags.length > 0,
   ];
@@ -43,13 +80,33 @@ export default function WritePage() {
     }
     if (!canSubmit) return;
 
+    // 이메일 인증 확인
+    if (!user.email_confirmed_at) {
+      setShowVerifyModal(true);
+      return;
+    }
+
+    // 콘텐츠 필터링
+    const bodyCheck = checkContent(body.trim());
+    if (!bodyCheck.passed) {
+      setToast({ show: true, message: bodyCheck.reason!, type: "error" });
+      return;
+    }
+    const locationCheck = checkContent(location.trim());
+    if (!locationCheck.passed) {
+      setToast({ show: true, message: locationCheck.reason!, type: "error" });
+      return;
+    }
+
     setSubmitting(true);
     try {
+      const dateLabel = formatDateLabel(date);
+      const timeLabel = time ? `${time.slice(0, 5)}경` : "";
       await createPost({
         user_id: user.id,
         location_name: location.trim(),
-        date_text: date.trim() || "오늘",
-        time_text: time.trim() || "",
+        date_text: dateLabel,
+        time_text: timeLabel,
         body: body.trim(),
         tags: selectedTags,
       });
@@ -65,6 +122,28 @@ export default function WritePage() {
   return (
     <div className="flex min-h-full flex-col bg-bg">
       <Toast message={toast.message} show={toast.show} type={toast.type} onClose={() => setToast(t => ({ ...t, show: false }))} />
+      {profanityAlert && (
+        <ProfanityAlertModal
+          reason={profanityAlert}
+          onClose={() => setProfanityAlert(null)}
+        />
+      )}
+      {showPlaceSearch && (
+        <PlaceSearchModal
+          onSelect={(place) => {
+            setLocation(place);
+            setShowPlaceSearch(false);
+          }}
+          onClose={() => setShowPlaceSearch(false)}
+        />
+      )}
+      {showVerifyModal && user?.email && (
+        <EmailVerifyModal
+          email={user.email}
+          onClose={() => setShowVerifyModal(false)}
+          onVerified={() => setShowVerifyModal(false)}
+        />
+      )}
       {/* Header */}
       <div className="flex items-center justify-between px-6 pb-2 pt-3">
         <button
@@ -110,13 +189,16 @@ export default function WritePage() {
             <input
               type="text"
               value={location}
-              onChange={(e) => setLocation(e.target.value)}
+              onChange={(e) => safeSetLocation(e.target.value)}
               placeholder="장소 검색 (카페명, 역 이름 등)"
               className="flex-1 rounded-xl border-[1.5px] border-border-strong bg-white px-4 py-3.5 text-[15px] text-primary outline-none placeholder:text-[#C7C7CC] focus:border-accent focus:ring-2 focus:ring-accent-light"
             />
-            <button className="flex items-center justify-center gap-1 rounded-xl border-[1.5px] border-border-strong bg-white px-4 text-sm font-semibold text-accent transition-colors active:bg-surface">
+            <button
+              onClick={() => setShowPlaceSearch(true)}
+              className="flex items-center justify-center gap-1 rounded-xl border-[1.5px] border-border-strong bg-white px-4 text-sm font-semibold text-accent transition-colors active:bg-surface"
+            >
               <MapPinIcon className="h-4 w-4" />
-              지도
+              검색
             </button>
           </div>
         </div>
@@ -127,24 +209,29 @@ export default function WritePage() {
             언제
           </label>
           <p className="mb-3 text-xs text-secondary">
-            대략적인 날짜와 시간이면 충분해요
+            날짜와 시간을 선택해주세요
           </p>
           <div className="flex gap-2">
             <input
-              type="text"
+              type="date"
               value={date}
+              max={new Date().toISOString().split("T")[0]}
               onChange={(e) => setDate(e.target.value)}
-              placeholder="날짜 (예: 오늘, 어제)"
-              className="flex-1 rounded-xl border-[1.5px] border-border-strong bg-white px-4 py-3.5 text-[15px] text-primary outline-none placeholder:text-[#C7C7CC] focus:border-accent focus:ring-2 focus:ring-accent-light"
+              className="flex-1 rounded-xl border-[1.5px] border-border-strong bg-white px-4 py-3.5 text-[15px] text-primary outline-none focus:border-accent focus:ring-2 focus:ring-accent-light"
             />
             <input
-              type="text"
+              type="time"
               value={time}
               onChange={(e) => setTime(e.target.value)}
-              placeholder="시간 (예: 오후 3시경)"
-              className="flex-1 rounded-xl border-[1.5px] border-border-strong bg-white px-4 py-3.5 text-[15px] text-primary outline-none placeholder:text-[#C7C7CC] focus:border-accent focus:ring-2 focus:ring-accent-light"
+              placeholder="시간 (선택)"
+              className="flex-1 rounded-xl border-[1.5px] border-border-strong bg-white px-4 py-3.5 text-[15px] text-primary outline-none focus:border-accent focus:ring-2 focus:ring-accent-light"
             />
           </div>
+          {date && (
+            <p className="mt-1.5 text-xs text-secondary">
+              {formatDateLabel(date)}{time ? ` · ${time.slice(0, 5)}` : ""}
+            </p>
+          )}
         </div>
 
         {/* Story */}
@@ -157,7 +244,7 @@ export default function WritePage() {
           </p>
           <textarea
             value={body}
-            onChange={(e) => setBody(e.target.value.slice(0, 500))}
+            onChange={(e) => safeSetBody(e.target.value)}
             placeholder="어떤 모습이었는지, 어떤 순간이 기억에 남는지..."
             rows={5}
             className="w-full resize-none rounded-xl border-[1.5px] border-border-strong bg-white px-4 py-4 text-[15px] leading-[1.7] text-primary outline-none placeholder:text-[#C7C7CC] focus:border-accent focus:ring-2 focus:ring-accent-light"

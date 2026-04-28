@@ -5,14 +5,20 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/AuthProvider";
 import { createMatchRequest } from "@/lib/matches";
+import { deletePost } from "@/lib/posts";
+import { isAdmin } from "@/lib/admin";
 import {
   ChevronLeftIcon,
   MapPinIcon,
   HeartIcon,
   StarIcon,
-  MoreIcon,
+  ShareIcon,
 } from "@/components/Icons";
-import { mockPosts } from "@/lib/mock-data";
+import { seedPosts } from "@/lib/mock-data";
+import { checkContent } from "@/lib/content-filter";
+import EmailVerifyModal from "@/components/EmailVerifyModal";
+import ProfanityAlertModal from "@/components/ProfanityAlertModal";
+import ReportModal from "@/components/ReportModal";
 import type { Post } from "@/types";
 
 export default function PostDetailPage({
@@ -29,6 +35,19 @@ export default function PostDetailPage({
   const [matchMessage, setMatchMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [profanityAlert, setProfanityAlert] = useState<string | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
+
+  const safeSetMatchMessage = (next: string) => {
+    if (!next) return setMatchMessage(next);
+    const result = checkContent(next);
+    if (!result.passed) {
+      setProfanityAlert(result.reason!);
+      return;
+    }
+    setMatchMessage(next.slice(0, 300));
+  };
 
   useEffect(() => {
     async function load() {
@@ -41,12 +60,12 @@ export default function PostDetailPage({
         if (data) {
           setPost(data);
         } else {
-          const mock = mockPosts.find((p) => p.id === id);
-          if (mock) setPost(mock);
+          const seed = seedPosts.find((p) => p.id === id);
+          if (seed) setPost(seed);
         }
       } catch {
-        const mock = mockPosts.find((p) => p.id === id);
-        if (mock) setPost(mock);
+        const seed = seedPosts.find((p) => p.id === id);
+        if (seed) setPost(seed);
       } finally {
         setLoading(false);
       }
@@ -59,7 +78,17 @@ export default function PostDetailPage({
       router.push("/login");
       return;
     }
+    if (!user.email_confirmed_at) {
+      setShowVerifyModal(true);
+      return;
+    }
     if (!matchMessage.trim() || !post) return;
+
+    const check = checkContent(matchMessage.trim());
+    if (!check.passed) {
+      alert(check.reason);
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -111,9 +140,42 @@ export default function PostDetailPage({
           <ChevronLeftIcon className="h-5 w-5" />
         </button>
         <span className="text-base font-semibold text-primary">스침</span>
-        <button className="flex h-9 w-9 items-center justify-center rounded-full">
-          <MoreIcon className="h-5 w-5 text-secondary" />
-        </button>
+        <div className="flex gap-2">
+          {user && (post.user_id === user.id || isAdmin(user.email)) && (
+            <button
+              onClick={async () => {
+                if (!confirm("이 글을 정말 삭제할까요?")) return;
+                try {
+                  await deletePost(post.id);
+                  alert("글이 삭제되었어요");
+                  router.push("/");
+                } catch {
+                  alert("삭제에 실패했어요. 잠시 후 다시 시도해주세요.");
+                }
+              }}
+              className="flex h-9 items-center justify-center rounded-full bg-surface px-3 text-xs font-semibold text-accent transition-colors active:bg-border-strong"
+            >
+              삭제
+            </button>
+          )}
+          <button
+            onClick={async () => {
+              const url = `https://suchim.co.kr/post/${id}`;
+              const text = `${post?.location_name}에서 스쳐간 인연 — 혹시 나일지도?`;
+              if (navigator.share) {
+                try {
+                  await navigator.share({ title: "스침", text, url });
+                } catch { /* 취소 */ }
+              } else {
+                await navigator.clipboard.writeText(url);
+                alert("링크가 복사되었어요!");
+              }
+            }}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-surface transition-colors active:bg-border-strong"
+          >
+            <ShareIcon className="h-[18px] w-[18px] text-primary" />
+          </button>
+        </div>
       </div>
 
       {/* Content */}
@@ -187,7 +249,7 @@ export default function PostDetailPage({
             </p>
             <textarea
               value={matchMessage}
-              onChange={(e) => setMatchMessage(e.target.value.slice(0, 300))}
+              onChange={(e) => safeSetMatchMessage(e.target.value)}
               placeholder="그날 제가 어떤 모습이었는지 적어주세요..."
               rows={4}
               className="w-full resize-none rounded-xl border-[1.5px] border-border-strong bg-white px-4 py-3.5 text-[15px] leading-[1.7] text-primary outline-none placeholder:text-[#C7C7CC] focus:border-accent focus:ring-2 focus:ring-accent-light"
@@ -218,6 +280,10 @@ export default function PostDetailPage({
                 router.push("/login");
                 return;
               }
+              if (!user.email_confirmed_at) {
+                setShowVerifyModal(true);
+                return;
+              }
               setShowMatchForm(true);
             }}
             className="mt-8 flex w-full items-center justify-center gap-2 rounded-2xl bg-accent py-4 text-base font-semibold text-white shadow-[0_4px_16px_rgba(255,59,92,0.3)] transition-all active:scale-[0.98]"
@@ -226,7 +292,38 @@ export default function PostDetailPage({
             저인 것 같아요
           </button>
         )}
+
+        {/* 신고 버튼 — 본인 글이 아닐 때만 */}
+        {user && user.id !== post.user_id && (
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="mt-4 w-full text-center text-xs text-secondary underline"
+          >
+            이 글 신고하기
+          </button>
+        )}
       </div>
+
+      {profanityAlert && (
+        <ProfanityAlertModal
+          reason={profanityAlert}
+          onClose={() => setProfanityAlert(null)}
+        />
+      )}
+      {showReportModal && user && post && (
+        <ReportModal
+          postId={post.id}
+          userId={user.id}
+          onClose={() => setShowReportModal(false)}
+        />
+      )}
+      {showVerifyModal && user?.email && (
+        <EmailVerifyModal
+          email={user.email}
+          onClose={() => setShowVerifyModal(false)}
+          onVerified={() => setShowVerifyModal(false)}
+        />
+      )}
     </div>
   );
 }
